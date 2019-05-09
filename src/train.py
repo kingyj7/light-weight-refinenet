@@ -46,8 +46,12 @@ import torch.nn as nn
 
 # custom libs
 from config import *
+import pyximport
+pyximport.install()
 from miou_utils import compute_iu, fast_cm
 from util import *
+
+import matplotlib.pyplot as plt
 
 def get_arguments():
     """Parse all the arguments provided from the CLI.
@@ -129,6 +133,8 @@ def create_segmenter(
     net, pretrained, num_classes
     ):
     """Create Encoder; for now only ResNet [50,101,152]"""
+    import sys;
+    sys.path.append("../")
     from models.resnet import rf_lw50, rf_lw101, rf_lw152
     if str(net) == '50':
         return rf_lw50(num_classes, imagenet=pretrained)
@@ -189,6 +195,7 @@ def create_loaders(
                          data_dir=val_dir,
                          transform_trn=None,
                          transform_val=composed_val)
+                         #transform_val=None)
     logger.info(" Created train set = {} examples, val set = {} examples"
                 .format(len(trainset), len(valset)))
     ## Training and validation loaders ##
@@ -284,7 +291,7 @@ def train_segmenter(
         batch_time.update(time.time() - start)
         if i % args.print_every == 0:
             logger.info(' Train epoch: {} [{}/{}]\t'
-                        'Avg. Loss: {:.3f}\t'
+                        'Avg. Loss: {:.6f}\t'
                         'Avg. Time: {:.3f}'.format(
                             epoch, i, len(train_loader),
                             losses.avg, batch_time.avg
@@ -310,7 +317,7 @@ def validate(
     with torch.no_grad():
         for i, sample in enumerate(val_loader):
             start = time.time()
-            input = sample['image']
+            input = sample['image']   
             target = sample['mask']
             input_var = torch.autograd.Variable(input).float().cuda()
             # Compute output
@@ -318,10 +325,14 @@ def validate(
             output = cv2.resize(output[0, :num_classes].data.cpu().numpy().transpose(1, 2, 0),
                                 target.size()[1:][::-1],
                                 interpolation=cv2.INTER_CUBIC).argmax(axis=2).astype(np.uint8)
+            
+            #print(input[0].shape)      # 3*720*1280
+            #print(target.shape)        # 1*720*1280
+
             # Compute IoU
             gt = target[0].data.cpu().numpy().astype(np.uint8)
             gt_idx = gt < num_classes # Ignore every class index larger than the number of classes
-            cm += fast_cm(output[gt_idx], gt[gt_idx], num_classes)
+            cm += fast_cm(output[gt_idx], gt[gt_idx], num_classes)         
 
             if i % args.print_every == 0:
                 logger.info(' Val epoch: {} [{}/{}]\t'
@@ -359,7 +370,9 @@ def main():
     ## Restore if any ##
     best_val, epoch_start = load_ckpt(args.ckpt_path, {'segmenter' : segmenter})
     ## Criterion ##
-    segm_crit = nn.NLLLoss2d(ignore_index=args.ignore_label).cuda()
+    #segm_crit = nn.NLLLoss2d(ignore_index=args.ignore_label).cuda()
+    segm_crit = nn.NLLLoss(ignore_index=args.ignore_label).cuda()
+    #segm_crit = nn.NLLLoss().cuda()
 
     ## Saver ##
     saver = Saver(args=vars(args),
@@ -369,6 +382,7 @@ def main():
 
     logger.info(" Training Process Starts")
     for task_idx in range(args.num_stages):
+        print('lr_enc:{},lr_dec:{}'.format(args.lr_enc[task_idx], args.lr_dec[task_idx]))
         start = time.time()
         torch.cuda.empty_cache()
         ## Create dataloaders ##
