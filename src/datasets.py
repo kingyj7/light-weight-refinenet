@@ -61,7 +61,7 @@ class Pad(object):
     def __call__(self, sample):
         image, mask = sample['image'], sample['mask']
         h, w = image.shape[:2]
-        h_pad = int(np.clip(((self.size - h) + 1)// 2, 0, 1e6))
+        h_pad = int(np.clip(((self.size - h) + 1)// 2, 0, 1e6))# 
         w_pad = int(np.clip(((self.size - w) + 1)// 2, 0, 1e6))
         pad = ((h_pad, h_pad), (w_pad, w_pad))
         image = np.stack([np.pad(image[:,:,c], pad,
@@ -149,7 +149,9 @@ class Normalise(object):
 
     def __call__(self, sample):
         image = sample['image']
-        return {'image': (self.scale * image - self.mean) / self.std, 'mask' : sample['mask']}
+        #return {'image': (self.scale * image - self.mean) / self.std, 'mask' : sample['mask']}
+        return {'image': (self.scale * image - self.mean) / self.std, 'mask' : sample['mask']//255}
+        #return {'image': image, 'mask' : sample['mask']//255}                                        #for validation
 
 class ToTensor(object):
     """Convert ndarrays in sample to Tensors."""
